@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from streamlit_geolocation import streamlit_geolocation
+from streamlit_folium import st_folium
+import folium
 
 st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
 
@@ -9,7 +11,6 @@ st.title("📍 Village Coverage 2026 Form")
 
 file_path = "Village 2026.xlsx"
 
-# Cache clear karne ke liye taaki Excel ke badlav turant dikhein
 @st.cache_data(ttl=1)
 def load_data():
     xls = pd.ExcelFile(file_path)
@@ -29,11 +30,9 @@ st.subheader("Survey Details")
 
 col1, col2 = st.columns(2)
 with col1:
-    # Uneditable Date
     current_date = datetime.now().strftime("%Y-%m-%d")
     st.text_input("Date", value=current_date, disabled=True, key="display_date")
 with col2:
-    # Uneditable Time
     current_time = datetime.now().strftime("%H:%M:%S")
     st.text_input("Time", value=current_time, disabled=True, key="display_time")
 
@@ -96,7 +95,7 @@ coverage_status = st.selectbox("Covered / Uncovered *", ["Select...", "Covered",
 outlet_count = st.number_input("Outlet In Village", min_value=0, value=0, step=1, key="outlet_count")
 
 st.markdown("---")
-st.subheader("🌐 Location Capture")
+st.subheader("🌐 Location Capture & OpenStreetMap")
 st.write("Click below to capture GPS location:")
 
 loc = streamlit_geolocation()
@@ -108,44 +107,64 @@ if loc and loc.get('latitude') and loc.get('longitude'):
     
     st.success(f"📍 Location Captured Successfully! (Accuracy: {acc:.1f} meters)")
     
-    map_df = pd.DataFrame({
-        'lat': [lat],
-        'lon': [lon]
-    })
-    st.map(map_df, zoom=18)
+    # OpenStreetMap (OSM) with Village Names & Landmarks
+    m = folium.Map(location=[lat, lon], zoom_start=17, tiles="OpenStreetMap")
+    folium.Marker(
+        [lat, lon],
+        popup=f"<b>{entered_village if entered_village else 'Survey Location'}</b><br>Accuracy: {acc:.1f}m",
+        tooltip="Captured Location",
+        icon=folium.Icon(color="blue", icon="info-sign")
+    ).add_to(m)
+    
+    # Render map in Streamlit
+    st_folium(m, width=700, height=400)
 
-if st.button("Save Form", type="primary"):
-    if selected_rd == "Select..." or selected_se == "Select..." or selected_dist == "Select..." or selected_spoke == "Select..." or not entered_village.strip() or coverage_status == "Select...":
-        st.error("❌ Kripya sabhi zaroori fields (* marked) bharein!")
-    elif not loc or not loc.get('latitude'):
-        st.error("❌ Location capture nahi hui! Kripya GPS allow karein.")
-    else:
-        lat = loc.get('latitude')
-        lon = loc.get('longitude')
-        acc = loc.get('accuracy', 0)
-        location_str = f"Lat: {lat}, Lng: {lon} (Acc: {acc:.1f}m)"
-        
-        new_record = {
-            'UNIQUE_ID': f"UID_{int(datetime.now().timestamp())}",
-            'Date': current_date,
-            'Time': current_time,
-            'RD Name': selected_rd,
-            'STL NAMe': selected_se,
-            'ASM Name': selected_asm,
-            'SM Name': selected_sm,
-            'Village Name': entered_village.strip(),
-            'Covered/Uncovered': coverage_status,
-            'Distributor Name & Code': selected_dist,
-            'Spoke Name & Code': selected_spoke,
-            'Outlet In Village': outlet_count,
-            'Location': location_str
-        }
-        
-        try:
-            with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-                existing_df = pd.read_excel(file_path, sheet_name="Village Coverage 2026")
-                updated_df = pd.concat([existing_df, pd.DataFrame([new_record])], ignore_index=True)
-                updated_df.to_excel(writer, sheet_name="Village Coverage 2026", index=False)
-            st.success("🎉 Form Successfully Saved and Logged to Excel!")
-        except Exception as ex:
-            st.error(f"❌ Error saving to Excel: {ex}")
+if 'submitted_successfully' not in st.session_state:
+    st.session_state.submitted_successfully = False
+
+if st.session_state.submitted_successfully:
+    st.success("🎉 Form Successfully Saved and Logged to Excel!")
+    if st.button("➕ Fill Next Form", type="primary"):
+        st.session_state.submitted_successfully = False
+        st.rerun()
+else:
+    if st.button("Save Form", type="primary"):
+        if selected_rd == "Select..." or selected_se == "Select..." or selected_dist == "Select..." or selected_spoke == "Select..." or not entered_village.strip() or coverage_status == "Select...":
+            st.error("❌ Kripya sabhi zaroori fields (* marked) bharein!")
+        elif not loc or not loc.get('latitude'):
+            st.error("❌ Location capture nahi hui! Kripya GPS allow karein.")
+        else:
+            lat = loc.get('latitude')
+            lon = loc.get('longitude')
+            acc = loc.get('accuracy', 0)
+            location_str = f"Lat: {lat}, Lng: {lon} (Acc: {acc:.1f}m)"
+            
+            sub_date = datetime.now().strftime("%Y-%m-%d")
+            sub_time = datetime.now().strftime("%H:%M:%S")
+            
+            new_record = {
+                'UNIQUE_ID': f"UID_{int(datetime.now().timestamp())}",
+                'Date': sub_date,
+                'Time': sub_time,
+                'RD Name': selected_rd,
+                'STL NAMe': selected_se,
+                'ASM Name': selected_asm,
+                'SM Name': selected_sm,
+                'Village Name': entered_village.strip(),
+                'Covered/Uncovered': coverage_status,
+                'Distributor Name & Code': selected_dist,
+                'Spoke Name & Code': selected_spoke,
+                'Outlet In Village': outlet_count,
+                'Location': location_str
+            }
+            
+            try:
+                with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+                    existing_df = pd.read_excel(file_path, sheet_name="Village Coverage 2026")
+                    updated_df = pd.concat([existing_df, pd.DataFrame([new_record])], ignore_index=True)
+                    updated_df.to_excel(writer, sheet_name="Village Coverage 2026", index=False)
+                
+                st.session_state.submitted_successfully = True
+                st.rerun()
+            except Exception as ex:
+                st.error(f"❌ Error saving to Excel: {ex}")

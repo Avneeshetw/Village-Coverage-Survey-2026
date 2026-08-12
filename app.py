@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 from streamlit_geolocation import streamlit_geolocation
 from streamlit_folium import st_folium
 import folium
@@ -28,12 +28,15 @@ except Exception as e:
 
 st.subheader("Survey Details")
 
+# IST (Indian Standard Time) correction (+5 hours 30 minutes from UTC)
+ist_time = datetime.utcnow() + timedelta(hours=5, minutes=30)
+
 col1, col2 = st.columns(2)
 with col1:
-    current_date = datetime.now().strftime("%Y-%m-%d")
+    current_date = ist_time.strftime("%Y-%m-%d")
     st.text_input("Date", value=current_date, disabled=True, key="display_date")
 with col2:
-    current_time = datetime.now().strftime("%H:%M:%S")
+    current_time = ist_time.strftime("%H:%M:%S")
     st.text_input("Time", value=current_time, disabled=True, key="display_time")
 
 # 1. RD Name
@@ -107,7 +110,6 @@ if loc and loc.get('latitude') and loc.get('longitude'):
     
     st.success(f"📍 Location Captured Successfully! (Accuracy: {acc:.1f} meters)")
     
-    # OpenStreetMap (OSM) with Village Names & Landmarks
     m = folium.Map(location=[lat, lon], zoom_start=17, tiles="OpenStreetMap")
     folium.Marker(
         [lat, lon],
@@ -116,7 +118,6 @@ if loc and loc.get('latitude') and loc.get('longitude'):
         icon=folium.Icon(color="blue", icon="info-sign")
     ).add_to(m)
     
-    # Render map in Streamlit
     st_folium(m, width=700, height=400)
 
 if 'submitted_successfully' not in st.session_state:
@@ -139,8 +140,8 @@ else:
             acc = loc.get('accuracy', 0)
             location_str = f"Lat: {lat}, Lng: {lon} (Acc: {acc:.1f}m)"
             
-            sub_date = datetime.now().strftime("%Y-%m-%d")
-            sub_time = datetime.now().strftime("%H:%M:%S")
+            sub_date = ist_time.strftime("%Y-%m-%d")
+            sub_time = ist_time.strftime("%H:%M:%S")
             
             new_record = {
                 'UNIQUE_ID': f"UID_{int(datetime.now().timestamp())}",

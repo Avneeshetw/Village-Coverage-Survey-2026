@@ -11,7 +11,7 @@ st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
 st.title("📍 Village Coverage 2026 Form")
 
 file_path = "Village 2026.xlsx"
-excel_lock = threading.Lock()  # 30 logo ke ek sath save karne par bhi data mix nahi hone dega
+excel_lock = threading.Lock()  # 30 logo ke ek sath save karne par data mix ya crash nahi hoga
 
 @st.cache_data(ttl=1)
 def load_data():
@@ -31,11 +31,12 @@ except Exception as e:
 if 'form_counter' not in st.session_state:
     st.session_state.form_counter = 0
 
-# Har naye session ya form open hone par ek unique ID turant allot ho jayegi jo badlegi nahi
-if f'unique_id_{st.session_state.form_counter}' not in st.session_state:
-    st.session_state[f'unique_id_{st.session_state.form_counter}'] = f"UID_{int(datetime.now().timestamp())}_{os_random_safe()}" if 'os_random_safe' else f"UID_{int(datetime.now().timestamp())}"
-
 fc = st.session_state.form_counter
+
+# Har naye form ya session ke liye unique ID turant generate hogi
+if f'unique_id_{fc}' not in st.session_state:
+    st.session_state[f'unique_id_{fc}'] = f"UID_{int(datetime.now().timestamp())}"
+
 current_uid = st.session_state[f'unique_id_{fc}']
 
 st.subheader("Survey Details")
@@ -175,7 +176,7 @@ else:
             }
             
             try:
-                # Thread Lock ensure karega ki chahe 30 log ek sath submit karein, ek-ek karke line mein save ho
+                # Thread lock ensure karega ki sabhi users ka data ek-ek karke safe tarike se save ho
                 with excel_lock:
                     with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
                         existing_df = pd.read_excel(file_path, sheet_name="Village Coverage 2026")

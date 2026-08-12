@@ -4,12 +4,14 @@ from datetime import datetime, timedelta
 from streamlit_geolocation import streamlit_geolocation
 from streamlit_folium import st_folium
 import folium
+import threading
 
 st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
 
 st.title("📍 Village Coverage 2026 Form")
 
 file_path = "Village 2026.xlsx"
+excel_lock = threading.Lock()  # 30 logo ke ek sath save karne par bhi data mix nahi hone dega
 
 @st.cache_data(ttl=1)
 def load_data():
@@ -26,15 +28,19 @@ except Exception as e:
     st.error(f"❌ Error loading Excel file: {e}")
     st.stop()
 
-# Initialize form counter for resetting fields on next form
 if 'form_counter' not in st.session_state:
     st.session_state.form_counter = 0
 
+# Har naye session ya form open hone par ek unique ID turant allot ho jayegi jo badlegi nahi
+if f'unique_id_{st.session_state.form_counter}' not in st.session_state:
+    st.session_state[f'unique_id_{st.session_state.form_counter}'] = f"UID_{int(datetime.now().timestamp())}_{os_random_safe()}" if 'os_random_safe' else f"UID_{int(datetime.now().timestamp())}"
+
 fc = st.session_state.form_counter
+current_uid = st.session_state[f'unique_id_{fc}']
 
 st.subheader("Survey Details")
+st.info(f"🆔 Session Unique ID: **{current_uid}**")
 
-# IST (Indian Standard Time) correction (+5 hours 30 minutes from UTC)
 ist_time = datetime.utcnow() + timedelta(hours=5, minutes=30)
 
 col1, col2 = st.columns(2)
@@ -94,7 +100,7 @@ else:
 spoke_options = ["Select..."] + sorted([x for x in df_f5['Spoke Name, Town Spoke Code'].dropna().unique() if x and x != 'nan']) if not df_f5.empty else ["Select..."]
 selected_spoke = st.selectbox("Spoke Name & Code *", spoke_options, key=f"spoke_name_{fc}")
 
-# 7. Village Name (Manual Text Input)
+# 7. Village Name
 entered_village = st.text_input("Village Name * (Type here)", key=f"village_name_{fc}")
 
 # 8. Covered / Uncovered
@@ -114,14 +120,17 @@ if loc and loc.get('latitude') and loc.get('longitude'):
     lon = loc['longitude']
     acc = loc.get('accuracy', 0)
     
-    st.success(f"📍 Location Captured Successfully! (Accuracy: {acc:.1f} meters)")
+    if acc > 30:
+        st.warning(f"⚠️ Warning: GPS Accuracy is poor ({acc:.1f} meters). Please move to an open area.")
+    else:
+        st.success(f"📍 Excellent GPS Accuracy! ({acc:.1f} meters)")
     
     m = folium.Map(location=[lat, lon], zoom_start=17, tiles="OpenStreetMap")
     folium.Marker(
         [lat, lon],
         popup=f"<b>{entered_village if entered_village else 'Survey Location'}</b><br>Accuracy: {acc:.1f}m",
         tooltip="Captured Location",
-        icon=folium.Icon(color="blue", icon="info-sign")
+        icon=folium.Icon(color="blue" if acc <= 30 else "orange", icon="info-sign")
     ).add_to(m)
     
     st_folium(m, width=700, height=400, key=f"map_{fc}")
@@ -144,14 +153,13 @@ else:
         else:
             lat = loc.get('latitude')
             lon = loc.get('longitude')
-            acc = loc.get('accuracy', 0)
             location_str = f"{lat}, {lon}"
             
             sub_date = ist_time.strftime("%Y-%m-%d")
             sub_time = ist_time.strftime("%H:%M:%S")
             
             new_record = {
-                'UNIQUE_ID': f"UID_{int(datetime.now().timestamp())}",
+                'UNIQUE_ID': current_uid,
                 'Date': sub_date,
                 'Time': sub_time,
                 'RD Name': selected_rd,
@@ -167,23 +175,24 @@ else:
             }
             
             try:
-                with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-                    existing_df = pd.read_excel(file_path, sheet_name="Village Coverage 2026")
-                    updated_df = pd.concat([existing_df, pd.DataFrame([new_record])], ignore_index=True)
-                    updated_df.to_excel(writer, sheet_name="Village Coverage 2026", index=False)
+                # Thread Lock ensure karega ki chahe 30 log ek sath submit karein, ek-ek karke line mein save ho
+                with excel_lock:
+                    with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+                        existing_df = pd.read_excel(file_path, sheet_name="Village Coverage 2026")
+                        updated_df = pd.concat([existing_df, pd.DataFrame([new_record])], ignore_index=True)
+                        updated_df.to_excel(writer, sheet_name="Village Coverage 2026", index=False)
                 
                 st.session_state.submitted_successfully = True
                 st.rerun()
             except Exception as ex:
                 st.error(f"❌ Error saving to Excel: {ex}")
 
-# --- ADMIN PANEL (Sidebar mein sirf aapke liye password protected download option) ---
+# --- ADMIN PANEL ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔒 Admin Download Panel")
 admin_password = st.sidebar.text_input("Enter Password to Download", type="password")
 
-# Aap yahan apna password badal sakte hain (abhi "slmg2026" set hai)
-if admin_password == "Village2026":
+if admin_password == "slmg2026":
     st.sidebar.success("✅ Access Granted")
     try:
         with open(file_path, "rb") as f:

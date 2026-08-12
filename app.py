@@ -26,6 +26,12 @@ except Exception as e:
     st.error(f"❌ Error loading Excel file: {e}")
     st.stop()
 
+# Initialize form counter for resetting fields on next form
+if 'form_counter' not in st.session_state:
+    st.session_state.form_counter = 0
+
+fc = st.session_state.form_counter
+
 st.subheader("Survey Details")
 
 # IST (Indian Standard Time) correction (+5 hours 30 minutes from UTC)
@@ -34,14 +40,14 @@ ist_time = datetime.utcnow() + timedelta(hours=5, minutes=30)
 col1, col2 = st.columns(2)
 with col1:
     current_date = ist_time.strftime("%Y-%m-%d")
-    st.text_input("Date", value=current_date, disabled=True, key="display_date")
+    st.text_input("Date", value=current_date, disabled=True, key=f"display_date_{fc}")
 with col2:
     current_time = ist_time.strftime("%H:%M:%S")
-    st.text_input("Time", value=current_time, disabled=True, key="display_time")
+    st.text_input("Time", value=current_time, disabled=True, key=f"display_time_{fc}")
 
 # 1. RD Name
 rd_options = ["Select..."] + sorted([x for x in df_master['RD NAME'].unique() if x and x != 'nan'])
-selected_rd = st.selectbox("RD Name *", rd_options, key="rd_name")
+selected_rd = st.selectbox("RD Name *", rd_options, key=f"rd_name_{fc}")
 
 if selected_rd != "Select...":
     df_f1 = df_master[df_master['RD NAME'] == selected_rd]
@@ -50,7 +56,7 @@ else:
 
 # 2. S.E Name
 se_options = ["Select..."] + sorted([x for x in df_f1['S.E Name'].unique() if x and x != 'nan']) if not df_f1.empty else ["Select..."]
-selected_se = st.selectbox("STL / S.E Name *", se_options, key="se_name")
+selected_se = st.selectbox("STL / S.E Name *", se_options, key=f"se_name_{fc}")
 
 if selected_se != "Select..." and not df_f1.empty:
     df_f2 = df_f1[df_f1['S.E Name'] == selected_se]
@@ -59,7 +65,7 @@ else:
 
 # 3. ASM Name
 asm_options = ["Select..."] + sorted([x for x in df_f2['Asm Name'].unique() if x and x != 'nan']) if not df_f2.empty else ["Select..."]
-selected_asm = st.selectbox("ASM Name *", asm_options, key="asm_name")
+selected_asm = st.selectbox("ASM Name *", asm_options, key=f"asm_name_{fc}")
 
 if selected_asm != "Select..." and not df_f2.empty:
     df_f3 = df_f2[df_f2['Asm Name'] == selected_asm]
@@ -68,7 +74,7 @@ else:
 
 # 4. SM Name
 sm_options = ["Select..."] + sorted([x for x in df_f3['Sm Name'].unique() if x and x != 'nan']) if not df_f3.empty else ["Select..."]
-selected_sm = st.selectbox("SM Name *", sm_options, key="sm_name")
+selected_sm = st.selectbox("SM Name *", sm_options, key=f"sm_name_{fc}")
 
 if selected_sm != "Select..." and not df_f3.empty:
     df_f4 = df_f3[df_f3['Sm Name'] == selected_sm]
@@ -77,7 +83,7 @@ else:
 
 # 5. Distributor Name & Code
 dist_options = ["Select..."] + sorted([x for x in df_f4['Distributor Name, Town DRB Code'].dropna().unique() if x and x != 'nan']) if not df_f4.empty else ["Select..."]
-selected_dist = st.selectbox("Distributor Name & Code *", dist_options, key="dist_name")
+selected_dist = st.selectbox("Distributor Name & Code *", dist_options, key=f"dist_name_{fc}")
 
 if selected_dist != "Select..." and not df_f4.empty:
     df_f5 = df_f4[df_f4['Distributor Name, Town DRB Code'] == selected_dist]
@@ -86,16 +92,16 @@ else:
 
 # 6. Spoke Name & Code
 spoke_options = ["Select..."] + sorted([x for x in df_f5['Spoke Name, Town Spoke Code'].dropna().unique() if x and x != 'nan']) if not df_f5.empty else ["Select..."]
-selected_spoke = st.selectbox("Spoke Name & Code *", spoke_options, key="spoke_name")
+selected_spoke = st.selectbox("Spoke Name & Code *", spoke_options, key=f"spoke_name_{fc}")
 
 # 7. Village Name (Manual Text Input)
-entered_village = st.text_input("Village Name * (Type here)", key="village_name")
+entered_village = st.text_input("Village Name * (Type here)", key=f"village_name_{fc}")
 
 # 8. Covered / Uncovered
-coverage_status = st.selectbox("Covered / Uncovered *", ["Select...", "Covered", "Uncovered"], key="coverage_status")
+coverage_status = st.selectbox("Covered / Uncovered *", ["Select...", "Covered", "Uncovered"], key=f"coverage_status_{fc}")
 
 # 9. Outlet In Village
-outlet_count = st.number_input("Outlet In Village", min_value=0, value=0, step=1, key="outlet_count")
+outlet_count = st.number_input("Outlet In Village", min_value=0, value=0, step=1, key=f"outlet_count_{fc}")
 
 st.markdown("---")
 st.subheader("🌐 Location Capture & OpenStreetMap")
@@ -118,18 +124,19 @@ if loc and loc.get('latitude') and loc.get('longitude'):
         icon=folium.Icon(color="blue", icon="info-sign")
     ).add_to(m)
     
-    st_folium(m, width=700, height=400)
+    st_folium(m, width=700, height=400, key=f"map_{fc}")
 
 if 'submitted_successfully' not in st.session_state:
     st.session_state.submitted_successfully = False
 
 if st.session_state.submitted_successfully:
     st.success("🎉 Form Successfully Saved and Logged to Excel!")
-    if st.button("➕ Fill Next Form", type="primary"):
+    if st.button("➕ Fill Next Form", type="primary", key=f"next_btn_{fc}"):
         st.session_state.submitted_successfully = False
+        st.session_state.form_counter += 1
         st.rerun()
 else:
-    if st.button("Save Form", type="primary"):
+    if st.button("Save Form", type="primary", key=f"save_btn_{fc}"):
         if selected_rd == "Select..." or selected_se == "Select..." or selected_dist == "Select..." or selected_spoke == "Select..." or not entered_village.strip() or coverage_status == "Select...":
             st.error("❌ Kripya sabhi zaroori fields (* marked) bharein!")
         elif not loc or not loc.get('latitude'):
@@ -138,7 +145,7 @@ else:
             lat = loc.get('latitude')
             lon = loc.get('longitude')
             acc = loc.get('accuracy', 0)
-            location_str = f"Lat: {lat}, Lng: {lon} (Acc: {acc:.1f}m)"
+            location_str = f"{lat}, {lon}"
             
             sub_date = ist_time.strftime("%Y-%m-%d")
             sub_time = ist_time.strftime("%H:%M:%S")
@@ -169,3 +176,25 @@ else:
                 st.rerun()
             except Exception as ex:
                 st.error(f"❌ Error saving to Excel: {ex}")
+
+# --- ADMIN PANEL (Sidebar mein sirf aapke liye password protected download option) ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔒 Admin Download Panel")
+admin_password = st.sidebar.text_input("Enter Password to Download", type="password")
+
+# Aap yahan apna password badal sakte hain (abhi "slmg2026" set hai)
+if admin_password == "Village2026":
+    st.sidebar.success("✅ Access Granted")
+    try:
+        with open(file_path, "rb") as f:
+            excel_data = f.read()
+        st.sidebar.download_button(
+            label="📥 Download Full Survey Excel",
+            data=excel_data,
+            file_name="Village_Coverage_Survey_2026.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except Exception as e:
+        st.sidebar.info("Excel file not ready yet.")
+elif admin_password != "":
+    st.sidebar.error("❌ Incorrect Password")

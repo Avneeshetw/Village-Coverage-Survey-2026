@@ -4,19 +4,14 @@ from datetime import datetime, timedelta
 from streamlit_geolocation import streamlit_geolocation
 from streamlit_folium import st_folium
 import folium
-import os
-import json
+import threading
 
 st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
 
 st.title("📍 Village Coverage 2026 Form")
 
 file_path = "Village 2026.xlsx"
-backup_dir = "survey_backups"
-
-# Backup folder create karna agar na ho
-if not os.path.exists(backup_dir):
-    os.makedirs(backup_dir)
+excel_lock = threading.Lock()  # 30 logo ke ek sath auto-save ke liye secure lock
 
 @st.cache_data(ttl=1)
 def load_data():
@@ -38,7 +33,7 @@ if 'form_counter' not in st.session_state:
 
 fc = st.session_state.form_counter
 
-# Har naye form ke liye unique ID jo kabhi overlap nahi hogi
+# AppSheet ki tarah har naye form ke liye direct unique ID
 if f'unique_id_{fc}' not in st.session_state:
     st.session_state[f'unique_id_{fc}'] = f"UID_{int(datetime.now().timestamp() * 1000)}"
 
@@ -145,7 +140,7 @@ if 'submitted_successfully' not in st.session_state:
     st.session_state.submitted_successfully = False
 
 if st.session_state.submitted_successfully:
-    st.success("🎉 Form Successfully Saved and Logged!")
+    st.success("🎉 Form Successfully Saved and Auto-Synced to Excel!")
     if st.button("➕ Fill Next Form", type="primary", key=f"next_btn_{fc}"):
         st.session_state.submitted_successfully = False
         st.session_state.form_counter += 1
@@ -181,49 +176,27 @@ else:
             }
             
             try:
-                # Har ek submission alag secure JSON file mein save hogi (No Overlap / No Conflict)
-                file_name_json = os.path.join(backup_dir, f"{current_uid}.json")
-                with open(file_name_json, "w", encoding="utf-8") as f:
-                    json.dump(new_record, f, ensure_ascii=False, indent=4)
+                # Thread Lock ke sath direct live auto-save (AppSheet ki tarah automatic)
+                with excel_lock:
+                    with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
+                        existing_df = pd.read_excel(file_path, sheet_name="Village Coverage 2026")
+                        # Duplicate entry bachane ke liye check
+                        if current_uid not in existing_df['UNIQUE_ID'].astype(str).values:
+                            updated_df = pd.concat([existing_df, pd.DataFrame([new_record])], ignore_index=True)
+                            updated_df.to_excel(writer, sheet_name="Village Coverage 2026", index=False)
                 
                 st.session_state.submitted_successfully = True
                 st.rerun()
             except Exception as ex:
-                st.error(f"❌ Error saving form: {ex}")
+                st.error(f"❌ Error saving to Excel: {ex}")
 
-# --- ADMIN PANEL ---
+# --- ADMIN PANEL (No Sync Button Needed, Fully Automatic) ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔒 Admin Download Panel")
 admin_password = st.sidebar.text_input("Enter Password to Download", type="password")
 
 if admin_password == "slmg2026":
-    st.sidebar.success("✅ Access Granted")
-    
-    # Backup JSON files ko combine karke Excel mein merge karne ka button
-    if st.sidebar.button("🔄 Sync & Merge All to Excel"):
-        try:
-            json_files = [os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.endswith('.json')]
-            if json_files:
-                all_records = []
-                for jf in json_files:
-                    with open(jf, 'r', encoding='utf-8') as jf_file:
-                        all_records.append(json.load(jf_file))
-                
-                new_df = pd.DataFrame(all_records)
-                
-                # Excel mein data merge karna
-                with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-                    existing_df = pd.read_excel(file_path, sheet_name="Village Coverage 2026")
-                    # Duplicate UNIQUE_ID hatane ke liye
-                    combined_df = pd.concat([existing_df, new_df]).drop_duplicates(subset=['UNIQUE_ID'], keep='first')
-                    combined_df.to_excel(writer, sheet_name="Village Coverage 2026", index=False)
-                
-                st.sidebar.success(f"✅ {len(all_records)} forms successfully merged into Excel!")
-            else:
-                st.sidebar.info("No new submissions found to sync.")
-        except Exception as e:
-            st.sidebar.error(f"Sync Error: {e}")
-
+    st.sidebar.success("✅ Access Granted (Auto-Sync Active)")
     try:
         with open(file_path, "rb") as f:
             excel_data = f.read()

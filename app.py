@@ -18,10 +18,15 @@ backup_dir = "survey_backups"
 if not os.path.exists(backup_dir):
     os.makedirs(backup_dir)
 
-# Automatic background sync function (Jaise AppSheet mein hota hai)
+# 100% Safe Auto-Sync Function (Purana & Back-date data kabhi delete nahi hoga)
 def auto_sync_json_to_excel():
     try:
         json_files = [os.path.join(backup_dir, f) for f in os.listdir(backup_dir) if f.endswith('.json')]
+        
+        # Pehle Excel ki master file aur sheet load karenge
+        xls = pd.ExcelFile(file_path)
+        existing_df = pd.read_excel(xls, sheet_name="Village Coverage 2026")
+        
         if json_files:
             all_records = []
             for jf in json_files:
@@ -30,12 +35,19 @@ def auto_sync_json_to_excel():
             
             new_df = pd.DataFrame(all_records)
             
-            # Excel mein data automatically merge karna
-            with pd.ExcelWriter(file_path, engine='openpyxl', mode='a', if_sheet_exists='overlay') as writer:
-                existing_df = pd.read_excel(file_path, sheet_name="Village Coverage 2026")
-                # Duplicate UNIQUE_ID hatane ke liye taaki purana data repeat na ho
-                combined_df = pd.concat([existing_df, new_df]).drop_duplicates(subset=['UNIQUE_ID'], keep='first')
-                combined_df.to_excel(writer, sheet_name="Village Coverage 2026", index=False)
+            # Purana Excel data aur saari JSON files ka data combine karke duplicates hata denge
+            combined_df = pd.concat([existing_df, new_df]).drop_duplicates(subset=['UNIQUE_ID'], keep='first')
+        else:
+            combined_df = existing_df
+            
+        # File ko overwrite (mode='w') karenge taaki overlapping ki problem na aaye aur sara back-date data safe rahe
+        with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
+            for sheet in xls.sheet_names:
+                if sheet != "Village Coverage 2026":
+                    df_sheet = pd.read_excel(xls, sheet_name=sheet)
+                    df_sheet.to_excel(writer, sheet_name=sheet, index=False)
+            combined_df.to_excel(writer, sheet_name="Village Coverage 2026", index=False)
+            
     except Exception as e:
         print(f"Auto-sync error: {e}")
 
@@ -202,12 +214,12 @@ else:
             }
             
             try:
-                # 1. Pehle safe JSON backup mein save hoga (conflict-free)
+                # 1. Pehle safe JSON backup mein save hoga
                 file_name_json = os.path.join(backup_dir, f"{current_uid}.json")
                 with open(file_name_json, "w", encoding="utf-8") as f:
                     json.dump(new_record, f, ensure_ascii=False, indent=4)
                 
-                # 2. Turant background mein Excel ke sath automatically merge ho jayega (AppSheet style)
+                # 2. Phir sara purana aur naya data safely merge hokar Excel mein update ho jayega
                 auto_sync_json_to_excel()
                 
                 st.session_state.submitted_successfully = True
@@ -224,7 +236,7 @@ if admin_password == "slmg2026":
     st.sidebar.success("✅ Access Granted (Auto-Sync Active)")
     
     try:
-        # Jab bhi admin download karega, ek baar background sync ensure kar lenge
+        # Download se pehle ensure kar lenge ki saara backup data Excel mein merged hai
         auto_sync_json_to_excel()
         
         with open(file_path, "rb") as f:

@@ -32,10 +32,9 @@ try:
     sheet_survey = spreadsheet.worksheet("Village Coverage 2026")
 except Exception as e:
     st.error(f"❌ Google Sheet Connection Error: {e}")
-    st.info("Kripya check karein ki Sheet me tabs (RD To Spoke Data / Village Coverage 2026) sahi hai aur Service Account Email ko Editor access mila hai.")
     st.stop()
 
-# Master Data Read Function (Isse Google Sheet ka data delete nahi hota, sirf read hota hai)
+# Master Data Read Function
 @st.cache_data(ttl=60)
 def load_data():
     data = sheet_master.get_all_records()
@@ -170,7 +169,6 @@ else:
             sub_date = ist_time.strftime("%Y-%m-%d")
             sub_time = ist_time.strftime("%H:%M:%S")
             
-            # Form Response Row (Sheet me bottom me add hoga)
             row_data = [
                 current_uid,
                 sub_date,
@@ -188,9 +186,7 @@ else:
             ]
             
             try:
-                # Naya data sabse aakhiri empty row me add hoga (purana delete nahi hoga)
                 sheet_survey.append_row(row_data, value_input_option='USER_ENTERED')
-                
                 st.session_state.submitted_successfully = True
                 st.rerun()
             except Exception as ex:

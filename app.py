@@ -22,21 +22,27 @@ def get_gspread_client():
         
     creds_dict = dict(st.secrets["gcp_service_account"])
     
-    # Private Key formatting fix (Fixes MalformedFraming / PEM Error)
+    # Private Key PEM Repair (Multi-line and Single-line handle logic)
     if "private_key" in creds_dict:
-        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        pk = creds_dict["private_key"]
+        pk = pk.replace("\\n", "\n").strip()
+        if not pk.startswith("-----BEGIN PRIVATE KEY-----"):
+            pk = "-----BEGIN PRIVATE KEY-----\n" + pk
+        if not pk.endswith("-----END PRIVATE KEY-----"):
+            pk = pk + "\n-----END PRIVATE KEY-----"
+        creds_dict["private_key"] = pk
         
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
 
+# Aapki Exact Google Sheet ID
 SPREADSHEET_ID = "1WptCID2zXSEqUvWbCam23HstE2W64RYj4bBRZsdefsA"
 
 try:
     gc = get_gspread_client()
     spreadsheet = gc.open_by_key(SPREADSHEET_ID)
     sheet_master = spreadsheet.worksheet("RD To Spoke Data")
-    # Screenshot ke hisab se exact tab name fix kiya hai:
-    sheet_survey = spreadsheet.worksheet("2nd Village Coverage 2026") 
+    sheet_survey = spreadsheet.worksheet("2nd Village Coverage 2026")
 except Exception as e:
     st.error(f"❌ Connection Error: {type(e).__name__} - {str(e)}")
     st.stop()

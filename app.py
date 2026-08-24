@@ -4,18 +4,43 @@ from datetime import datetime, timedelta
 from streamlit_geolocation import streamlit_geolocation
 from streamlit_folium import st_folium
 import folium
-import os
+import gspread
+from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
 
 st.title("📍 Village Coverage 2026 Form")
 
-file_path = "Village 2026.xlsx"
+# ----------------- GOOGLE SHEET CONNECTION -----------------
+@st.cache_resource
+def get_gspread_client():
+    scopes = [
+        "https://www.googleapis.com/auth/spreadsheets",
+        "https://www.googleapis.com/auth/drive"
+    ]
+    creds_dict = dict(st.secrets["gcp_service_account"])
+    credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    return gspread.authorize(credentials)
 
-@st.cache_data(ttl=1)
+# ⚠️ APNI GOOGLE SHEET KI ID YAHAN PASTE KAREIN
+# (URL me /d/ aur /edit ke beech ka text)
+SPREADSHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE"
+
+try:
+    gc = get_gspread_client()
+    spreadsheet = gc.open_by_key(SPREADSHEET_ID)
+    sheet_master = spreadsheet.worksheet("RD To Spoke Data")
+    sheet_survey = spreadsheet.worksheet("Village Coverage 2026")
+except Exception as e:
+    st.error(f"❌ Google Sheet Connection Error: {e}")
+    st.info("Kripya check karein ki SPREADSHEET_ID sahi hai aur Service Account Email ko Sheet me Editor access mila hai.")
+    st.stop()
+
+# Master Data Read Function (Isse Google Sheet ka data delete nahi hota, sirf read hota hai)
+@st.cache_data(ttl=60)
 def load_data():
-    xls = pd.ExcelFile(file_path)
-    df_rd = pd.read_excel(xls, sheet_name="RD To Spoke Data")
+    data = sheet_master.get_all_records()
+    df_rd = pd.DataFrame(data)
     df_rd.columns = df_rd.columns.str.strip()
     for col in df_rd.select_dtypes(include=['object']).columns:
         df_rd[col] = df_rd[col].astype(str).str.strip()
@@ -24,15 +49,15 @@ def load_data():
 try:
     df_master = load_data()
 except Exception as e:
-    st.error(f"❌ Error loading Excel file: {e}")
+    st.error(f"❌ Error loading Master Data: {e}")
     st.stop()
 
+# ----------------- SESSION STATE SETUP -----------------
 if 'form_counter' not in st.session_state:
     st.session_state.form_counter = 0
 
 fc = st.session_state.form_counter
 
-# Har naye form ke liye unique ID
 if f'unique_id_{fc}' not in st.session_state:
     st.session_state[f'unique_id_{fc}'] = f"UID_{int(datetime.now().timestamp() * 1000)}"
 
@@ -51,50 +76,36 @@ with col2:
     current_time = ist_time.strftime("%H:%M:%S")
     st.text_input("Time", value=current_time, disabled=True, key=f"display_time_{fc}")
 
+# ----------------- DROPDOWNS (CASCADE FILTERING) -----------------
 # 1. RD Name
 rd_options = ["Select..."] + sorted([x for x in df_master['RD NAME'].unique() if x and x != 'nan'])
 selected_rd = st.selectbox("RD Name *", rd_options, key=f"rd_name_{fc}")
 
-if selected_rd != "Select...":
-    df_f1 = df_master[df_master['RD NAME'] == selected_rd]
-else:
-    df_f1 = pd.DataFrame(columns=df_master.columns)
+df_f1 = df_master[df_master['RD NAME'] == selected_rd] if selected_rd != "Select..." else pd.DataFrame(columns=df_master.columns)
 
 # 2. S.E Name
 se_options = ["Select..."] + sorted([x for x in df_f1['S.E Name'].unique() if x and x != 'nan']) if not df_f1.empty else ["Select..."]
 selected_se = st.selectbox("STL / S.E Name *", se_options, key=f"se_name_{fc}")
 
-if selected_se != "Select..." and not df_f1.empty:
-    df_f2 = df_f1[df_f1['S.E Name'] == selected_se]
-else:
-    df_f2 = pd.DataFrame(columns=df_master.columns)
+df_f2 = df_f1[df_f1['S.E Name'] == selected_se] if selected_se != "Select..." and not df_f1.empty else pd.DataFrame(columns=df_master.columns)
 
 # 3. ASM Name
 asm_options = ["Select..."] + sorted([x for x in df_f2['Asm Name'].unique() if x and x != 'nan']) if not df_f2.empty else ["Select..."]
 selected_asm = st.selectbox("ASM Name *", asm_options, key=f"asm_name_{fc}")
 
-if selected_asm != "Select..." and not df_f2.empty:
-    df_f3 = df_f2[df_f2['Asm Name'] == selected_asm]
-else:
-    df_f3 = pd.DataFrame(columns=df_master.columns)
+df_f3 = df_f2[df_f2['Asm Name'] == selected_asm] if selected_asm != "Select..." and not df_f2.empty else pd.DataFrame(columns=df_master.columns)
 
 # 4. SM Name
 sm_options = ["Select..."] + sorted([x for x in df_f3['Sm Name'].unique() if x and x != 'nan']) if not df_f3.empty else ["Select..."]
 selected_sm = st.selectbox("SM Name *", sm_options, key=f"sm_name_{fc}")
 
-if selected_sm != "Select..." and not df_f3.empty:
-    df_f4 = df_f3[df_f3['Sm Name'] == selected_sm]
-else:
-    df_f4 = pd.DataFrame(columns=df_master.columns)
+df_f4 = df_f3[df_f3['Sm Name'] == selected_sm] if selected_sm != "Select..." and not df_f3.empty else pd.DataFrame(columns=df_master.columns)
 
 # 5. Distributor Name & Code
 dist_options = ["Select..."] + sorted([x for x in df_f4['Distributor Name, Town DRB Code'].dropna().unique() if x and x != 'nan']) if not df_f4.empty else ["Select..."]
 selected_dist = st.selectbox("Distributor Name & Code *", dist_options, key=f"dist_name_{fc}")
 
-if selected_dist != "Select..." and not df_f4.empty:
-    df_f5 = df_f4[df_f4['Distributor Name, Town DRB Code'] == selected_dist]
-else:
-    df_f5 = pd.DataFrame(columns=df_master.columns)
+df_f5 = df_f4[df_f4['Distributor Name, Town DRB Code'] == selected_dist] if selected_dist != "Select..." and not df_f4.empty else pd.DataFrame(columns=df_master.columns)
 
 # 6. Spoke Name & Code
 spoke_options = ["Select..."] + sorted([x for x in df_f5['Spoke Name, Town Spoke Code'].dropna().unique() if x and x != 'nan']) if not df_f5.empty else ["Select..."]
@@ -109,6 +120,7 @@ coverage_status = st.selectbox("Covered / Uncovered *", ["Select...", "Covered",
 # 9. Outlet In Village
 outlet_count = st.number_input("Outlet In Village", min_value=0, value=0, step=1, key=f"outlet_count_{fc}")
 
+# ----------------- LOCATION CAPTURE -----------------
 st.markdown("---")
 st.subheader("🌐 Location Capture & OpenStreetMap")
 st.write("Click below to capture GPS location:")
@@ -135,11 +147,12 @@ if loc and loc.get('latitude') and loc.get('longitude'):
     
     st_folium(m, width=700, height=400, key=f"map_{fc}")
 
+# ----------------- DATA APPEND TO GOOGLE SHEET -----------------
 if 'submitted_successfully' not in st.session_state:
     st.session_state.submitted_successfully = False
 
 if st.session_state.submitted_successfully:
-    st.success("🎉 Form Successfully Saved to Excel!")
+    st.success("🎉 Form Successfully Saved to Google Sheet!")
     if st.button("➕ Fill Next Form", type="primary", key=f"next_btn_{fc}"):
         st.session_state.submitted_successfully = False
         st.session_state.form_counter += 1
@@ -158,44 +171,33 @@ else:
             sub_date = ist_time.strftime("%Y-%m-%d")
             sub_time = ist_time.strftime("%H:%M:%S")
             
-            new_record = {
-                'UNIQUE_ID': current_uid,
-                'Date': sub_date,
-                'Time': sub_time,
-                'RD Name': selected_rd,
-                'STL NAMe': selected_se,
-                'ASM Name': selected_asm,
-                'SM Name': selected_sm,
-                'Village Name': entered_village.strip(),
-                'Covered/Uncovered': coverage_status,
-                'Distributor Name & Code': selected_dist,
-                'Spoke Name & Code': selected_spoke,
-                'Outlet In Village': outlet_count,
-                'Location': location_str
-            }
+            # Form Response Row (Sheet me bottom me add hoga)
+            row_data = [
+                current_uid,
+                sub_date,
+                sub_time,
+                selected_rd,
+                selected_se,
+                selected_asm if selected_asm != "Select..." else "",
+                selected_sm if selected_sm != "Select..." else "",
+                entered_village.strip(),
+                coverage_status,
+                selected_dist,
+                selected_spoke,
+                int(outlet_count),
+                location_str
+            ]
             
             try:
-                # Direct Excel file mein purana data read karke naya row add karna
-                xls = pd.ExcelFile(file_path)
-                existing_df = pd.read_excel(xls, sheet_name="Village Coverage 2026")
-                
-                new_df = pd.DataFrame([new_record])
-                combined_df = pd.concat([existing_df, new_df], ignore_index=True)
-                
-                # Sabhi sheets ko wapas save karna taaki master sheet aur survey sheet dono safe rahein
-                with pd.ExcelWriter(file_path, engine='openpyxl', mode='w') as writer:
-                    for sheet in xls.sheet_names:
-                        if sheet != "Village Coverage 2026":
-                            df_sheet = pd.read_excel(xls, sheet_name=sheet)
-                            df_sheet.to_excel(writer, sheet_name=sheet, index=False)
-                    combined_df.to_excel(writer, sheet_name="Village Coverage 2026", index=False)
+                # Append row: Naya data aakhiri row me insert hota hai bina purane data ko chhede
+                sheet_survey.append_row(row_data, value_input_option='USER_ENTERED')
                 
                 st.session_state.submitted_successfully = True
                 st.rerun()
             except Exception as ex:
-                st.error(f"❌ Error saving form: {ex}")
+                st.error(f"❌ Error saving form to Google Sheet: {ex}")
 
-# --- ADMIN PANEL ---
+# ----------------- ADMIN PANEL -----------------
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔒 Admin Download Panel")
 admin_password = st.sidebar.text_input("Enter Password to Download", type="password")
@@ -204,15 +206,18 @@ if admin_password == "slmg2026":
     st.sidebar.success("✅ Access Granted")
     
     try:
-        with open(file_path, "rb") as f:
-            excel_data = f.read()
+        survey_records = sheet_survey.get_all_records()
+        df_download = pd.DataFrame(survey_records)
+        
+        csv_data = df_download.to_csv(index=False).encode('utf-8')
+        
         st.sidebar.download_button(
-            label="📥 Download Full Survey Excel",
-            data=excel_data,
-            file_name="Village_Coverage_Survey_2026.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            label="📥 Download Full Survey Data (CSV)",
+            data=csv_data,
+            file_name="Village_Coverage_Survey_2026.csv",
+            mime="text/csv"
         )
     except Exception as e:
-        st.sidebar.info("Excel file not ready yet.")
+        st.sidebar.error(f"Error preparing download: {e}")
 elif admin_password != "":
     st.sidebar.error("❌ Incorrect Password")

@@ -22,9 +22,8 @@ def get_gspread_client():
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
 
-# ⚠️ APNI GOOGLE SHEET KI ID YAHAN PASTE KAREIN
-# (URL me /d/ aur /edit ke beech ka text)
-SPREADSHEET_ID = "1a2b3c4d5e6f7g8h9i0j"
+# Aapki Exact Google Sheet ID
+SPREADSHEET_ID = "1WptCID2zXSEqUvWbCam23HstE2W64RYj4bBRZsdefsA"
 
 try:
     gc = get_gspread_client()
@@ -33,7 +32,7 @@ try:
     sheet_survey = spreadsheet.worksheet("Village Coverage 2026")
 except Exception as e:
     st.error(f"❌ Google Sheet Connection Error: {e}")
-    st.info("Kripya check karein ki SPREADSHEET_ID sahi hai aur Service Account Email ko Sheet me Editor access mila hai.")
+    st.info("Kripya check karein ki Sheet me tabs (RD To Spoke Data / Village Coverage 2026) sahi hai aur Service Account Email ko Editor access mila hai.")
     st.stop()
 
 # Master Data Read Function (Isse Google Sheet ka data delete nahi hota, sirf read hota hai)
@@ -189,7 +188,7 @@ else:
             ]
             
             try:
-                # Append row: Naya data aakhiri row me insert hota hai bina purane data ko chhede
+                # Naya data sabse aakhiri empty row me add hoga (purana delete nahi hoga)
                 sheet_survey.append_row(row_data, value_input_option='USER_ENTERED')
                 
                 st.session_state.submitted_successfully = True

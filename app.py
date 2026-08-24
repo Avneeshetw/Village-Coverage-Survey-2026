@@ -12,17 +12,19 @@ st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
 st.title("📍 Village Coverage 2026 Form")
 
 # ----------------- GOOGLE SHEET CONNECTION -----------------
-@st.cache_resource
 def get_gspread_client():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
+    if "gcp_service_account" not in st.secrets:
+        raise Exception("Streamlit Secrets me 'gcp_service_account' nahi mil raha hai. Kripya Advanced Settings > Secrets check karein.")
+        
     creds_dict = dict(st.secrets["gcp_service_account"])
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
 
-# Aapki Exact Google Sheet ID
+# Aapki Google Sheet ID
 SPREADSHEET_ID = "1WptCID2zXSEqUvWbCam23HstE2W64RYj4bBRZsdefsA"
 
 try:
@@ -31,7 +33,10 @@ try:
     sheet_master = spreadsheet.worksheet("RD To Spoke Data")
     sheet_survey = spreadsheet.worksheet("Village Coverage 2026")
 except Exception as e:
-    st.error(f"❌ Google Sheet Connection Error: {e}")
+    st.error(f"❌ Connection Error: {type(e).__name__} - {str(e)}")
+    st.info("💡 **Check Points:**")
+    st.write("1. Google Sheet me Share button se Service Account Email ko **Editor** access diya hai ya nahi?")
+    st.write("2. Sheet me niche Tabs ke naam exact **'RD To Spoke Data'** aur **'Village Coverage 2026'** hain ya nahi?")
     st.stop()
 
 # Master Data Read Function

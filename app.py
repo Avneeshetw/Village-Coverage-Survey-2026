@@ -7,9 +7,9 @@ import folium
 import gspread
 from google.oauth2.service_account import Credentials
 
-st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
+st.set_page_config(page_title="2nd Village Coverage 2026 Form", layout="centered")
 
-st.title("📍 Village Coverage 2026 Form")
+st.title("📍 2nd Village Coverage 2026 Form")
 
 # ----------------- GOOGLE SHEET CONNECTION -----------------
 def get_gspread_client():
@@ -31,12 +31,12 @@ try:
     gc = get_gspread_client()
     spreadsheet = gc.open_by_key(SPREADSHEET_ID)
     sheet_master = spreadsheet.worksheet("RD To Spoke Data")
-    sheet_survey = spreadsheet.worksheet("Village Coverage 2026")
+    sheet_survey = spreadsheet.worksheet("2nd Village Coverage 2026")
 except Exception as e:
     st.error(f"❌ Connection Error: {type(e).__name__} - {str(e)}")
     st.info("💡 **Check Points:**")
     st.write("1. Google Sheet me Share button se Service Account Email ko **Editor** access diya hai ya nahi?")
-    st.write("2. Sheet me niche Tabs ke naam exact **'RD To Spoke Data'** aur **'Village Coverage 2026'** hain ya nahi?")
+    st.write("2. Sheet me niche Tabs ke naam exact **'RD To Spoke Data'** aur **'2nd Village Coverage 2026'** hain ya nahi?")
     st.stop()
 
 # Master Data Read Function

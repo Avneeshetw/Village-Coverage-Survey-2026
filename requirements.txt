@@ -2,5 +2,7 @@ streamlit
 pandas
 openpyxl
 streamlit-geolocation
-folium
 streamlit-folium
+folium
+gspread
+google-auth

@@ -24,7 +24,7 @@ def get_gspread_client():
 
 # ⚠️ APNI GOOGLE SHEET KI ID YAHAN PASTE KAREIN
 # (URL me /d/ aur /edit ke beech ka text)
-SPREADSHEET_ID = "YOUR_GOOGLE_SHEET_ID_HERE"
+SPREADSHEET_ID = "1a2b3c4d5e6f7g8h9i0j"
 
 try:
     gc = get_gspread_client()

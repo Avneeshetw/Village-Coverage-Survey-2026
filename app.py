@@ -7,9 +7,9 @@ import folium
 import gspread
 from google.oauth2.service_account import Credentials
 
-st.set_page_config(page_title="2nd Village Coverage 2026 Form", layout="centered")
+st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
 
-st.title("📍 2nd Village Coverage 2026 Form")
+st.title("📍 Village Coverage 2026 Form")
 
 # ----------------- GOOGLE SHEET CONNECTION -----------------
 def get_gspread_client():
@@ -18,25 +18,27 @@ def get_gspread_client():
         "https://www.googleapis.com/auth/drive"
     ]
     if "gcp_service_account" not in st.secrets:
-        raise Exception("Streamlit Secrets me 'gcp_service_account' nahi mil raha hai. Kripya Advanced Settings > Secrets check karein.")
+        raise Exception("Streamlit Secrets me 'gcp_service_account' nahi mila.")
         
     creds_dict = dict(st.secrets["gcp_service_account"])
+    
+    # Private Key formatting fix (Fixes MalformedFraming / PEM Error)
+    if "private_key" in creds_dict:
+        creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+        
     credentials = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     return gspread.authorize(credentials)
 
-# Aapki Google Sheet ID
 SPREADSHEET_ID = "1WptCID2zXSEqUvWbCam23HstE2W64RYj4bBRZsdefsA"
 
 try:
     gc = get_gspread_client()
     spreadsheet = gc.open_by_key(SPREADSHEET_ID)
     sheet_master = spreadsheet.worksheet("RD To Spoke Data")
-    sheet_survey = spreadsheet.worksheet("2nd Village Coverage 2026")
+    # Screenshot ke hisab se exact tab name fix kiya hai:
+    sheet_survey = spreadsheet.worksheet("2nd Village Coverage 2026") 
 except Exception as e:
     st.error(f"❌ Connection Error: {type(e).__name__} - {str(e)}")
-    st.info("💡 **Check Points:**")
-    st.write("1. Google Sheet me Share button se Service Account Email ko **Editor** access diya hai ya nahi?")
-    st.write("2. Sheet me niche Tabs ke naam exact **'RD To Spoke Data'** aur **'2nd Village Coverage 2026'** hain ya nahi?")
     st.stop()
 
 # Master Data Read Function
@@ -102,7 +104,7 @@ df_f3 = df_f2[df_f2['Asm Name'] == selected_asm] if selected_asm != "Select..." 
 sm_options = ["Select..."] + sorted([x for x in df_f3['Sm Name'].unique() if x and x != 'nan']) if not df_f3.empty else ["Select..."]
 selected_sm = st.selectbox("SM Name *", sm_options, key=f"sm_name_{fc}")
 
-df_f4 = df_f3[df_f3['Sm Name'] == selected_sm] if selected_sm != "Select..." and not df_f3.empty else pd.DataFrame(columns=df_master.columns)
+df_f4 = df_f3[df_f3['Sm Name'] == selected_sm] if selected_sm != "Select..." and not df_f4.empty else pd.DataFrame(columns=df_master.columns)
 
 # 5. Distributor Name & Code
 dist_options = ["Select..."] + sorted([x for x in df_f4['Distributor Name, Town DRB Code'].dropna().unique() if x and x != 'nan']) if not df_f4.empty else ["Select..."]

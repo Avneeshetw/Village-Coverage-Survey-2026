@@ -4,3 +4,5 @@ openpyxl
 streamlit-geolocation
 folium
 streamlit-folium
+gspread
+google-auth

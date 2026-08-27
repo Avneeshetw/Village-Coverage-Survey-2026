@@ -10,7 +10,6 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
-
 st.title("📍 Village Coverage 2026 Form")
 
 file_path = "Village 2026.xlsx"
@@ -19,7 +18,6 @@ backup_dir = "survey_backups"
 if not os.path.exists(backup_dir):
     os.makedirs(backup_dir)
 
-# --- GOOGLE SHEETS AUTHENTICATION & SYNC FUNCTION ---
 def get_gspread_client():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -27,19 +25,19 @@ def get_gspread_client():
     ]
     if "gcp_service_account" in st.secrets:
         creds_dict = dict(st.secrets["gcp_service_account"])
+        # Fix line breaks in private key for Streamlit secrets
+        if "private_key" in creds_dict:
+            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     elif os.path.exists("service_account.json"):
         creds = Credentials.from_service_account_file("service_account.json", scopes=scopes)
     else:
-        st.error("❌ Service account credentials (secrets / json) missing!")
+        st.error("❌ Service account credentials missing!")
         st.stop()
         
     return gspread.authorize(creds)
 
 def sync_to_google_sheet(record):
-    """
-    Directly appends record to Google Sheet without deleting old data.
-    """
     try:
         gc = get_gspread_client()
         sheet = gc.open("Village Coverage 2026").worksheet("Village Coverage 2026")
@@ -103,47 +101,37 @@ with col2:
     current_time = ist_time.strftime("%H:%M:%S")
     st.text_input("Time", value=current_time, disabled=True, key=f"display_time_{fc}")
 
-# 1. RD Name
+# Dropdowns Setup
 rd_options = ["Select..."] + sorted([x for x in df_master['RD NAME'].unique() if x and x != 'nan'])
 selected_rd = st.selectbox("RD Name *", rd_options, key=f"rd_name_{fc}")
 
 df_f1 = df_master[df_master['RD NAME'] == selected_rd] if selected_rd != "Select..." else pd.DataFrame(columns=df_master.columns)
 
-# 2. S.E Name
 se_options = ["Select..."] + sorted([x for x in df_f1['S.E Name'].unique() if x and x != 'nan']) if not df_f1.empty else ["Select..."]
 selected_se = st.selectbox("STL / S.E Name *", se_options, key=f"se_name_{fc}")
 
 df_f2 = df_f1[df_f1['S.E Name'] == selected_se] if selected_se != "Select..." and not df_f1.empty else pd.DataFrame(columns=df_master.columns)
 
-# 3. ASM Name
 asm_options = ["Select..."] + sorted([x for x in df_f2['Asm Name'].unique() if x and x != 'nan']) if not df_f2.empty else ["Select..."]
 selected_asm = st.selectbox("ASM Name *", asm_options, key=f"asm_name_{fc}")
 
 df_f3 = df_f2[df_f2['Asm Name'] == selected_asm] if selected_asm != "Select..." and not df_f2.empty else pd.DataFrame(columns=df_master.columns)
 
-# 4. SM Name
 sm_options = ["Select..."] + sorted([x for x in df_f3['Sm Name'].unique() if x and x != 'nan']) if not df_f3.empty else ["Select..."]
 selected_sm = st.selectbox("SM Name *", sm_options, key=f"sm_name_{fc}")
 
 df_f4 = df_f3[df_f3['Sm Name'] == selected_sm] if selected_sm != "Select..." and not df_f3.empty else pd.DataFrame(columns=df_master.columns)
 
-# 5. Distributor Name & Code
 dist_options = ["Select..."] + sorted([x for x in df_f4['Distributor Name, Town DRB Code'].dropna().unique() if x and x != 'nan']) if not df_f4.empty else ["Select..."]
 selected_dist = st.selectbox("Distributor Name & Code *", dist_options, key=f"dist_name_{fc}")
 
 df_f5 = df_f4[df_f4['Distributor Name, Town DRB Code'] == selected_dist] if selected_dist != "Select..." and not df_f4.empty else pd.DataFrame(columns=df_master.columns)
 
-# 6. Spoke Name & Code
 spoke_options = ["Select..."] + sorted([x for x in df_f5['Spoke Name, Town Spoke Code'].dropna().unique() if x and x != 'nan']) if not df_f5.empty else ["Select..."]
 selected_spoke = st.selectbox("Spoke Name & Code *", spoke_options, key=f"spoke_name_{fc}")
 
-# 7. Village Name
 entered_village = st.text_input("Village Name * (Type here)", key=f"village_name_{fc}")
-
-# 8. Covered / Uncovered
 coverage_status = st.selectbox("Covered / Uncovered *", ["Select...", "Covered", "Uncovered"], key=f"coverage_status_{fc}")
-
-# 9. Outlet In Village
 outlet_count = st.number_input("Outlet In Village", min_value=0, value=0, step=1, key=f"outlet_count_{fc}")
 
 st.markdown("---")
@@ -157,11 +145,7 @@ if loc and loc.get('latitude') and loc.get('longitude'):
     lon = loc['longitude']
     acc = loc.get('accuracy', 0)
     
-    # Threshold updated to allow desktop location capturing without block
-    if acc > 10000:
-        st.warning(f"⚠️ Warning: GPS Accuracy is poor ({acc:.1f} meters). Please move to an open area.")
-    else:
-        st.success(f"📍 Location Captured! Accuracy: ({acc:.1f} meters)")
+    st.success(f"📍 Location Captured! Accuracy: ({acc:.1f} meters)")
     
     m = folium.Map(location=[lat, lon], zoom_start=17, tiles="OpenStreetMap")
     folium.Marker(
@@ -213,12 +197,10 @@ else:
             }
             
             try:
-                # 1. Local backup JSON create karega
                 file_name_json = os.path.join(backup_dir, f"{current_uid}.json")
                 with open(file_name_json, "w", encoding="utf-8") as f:
                     json.dump(new_record, f, ensure_ascii=False, indent=4)
                 
-                # 2. Direct Google Sheet me append karega (Purana data bilkul delete nahi hoga)
                 success, msg = sync_to_google_sheet(new_record)
                 
                 if success:
@@ -228,28 +210,3 @@ else:
                     st.error(f"❌ Google Sheet Sync Error: {msg}")
             except Exception as ex:
                 st.error(f"❌ Error saving form: {ex}")
-
-# --- ADMIN PANEL ---
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔒 Admin Download Panel")
-admin_password = st.sidebar.text_input("Enter Password to Download", type="password")
-
-if admin_password == "slmg2026":
-    st.sidebar.success("✅ Access Granted")
-    try:
-        gc = get_gspread_client()
-        sheet = gc.open("Village Coverage 2026").worksheet("Village Coverage 2026")
-        records = sheet.get_all_records()
-        df_live = pd.DataFrame(records)
-        
-        csv_data = df_live.to_csv(index=False).encode('utf-8')
-        st.sidebar.download_button(
-            label="📥 Download Live Google Sheet Data (CSV)",
-            data=csv_data,
-            file_name="Village_Coverage_Survey_2026.csv",
-            mime="text/csv"
-        )
-    except Exception as e:
-        st.sidebar.info("Google Sheet data load nahi ho pa raha.")
-elif admin_password != "":
-    st.sidebar.error("❌ Incorrect Password")

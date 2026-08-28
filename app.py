@@ -10,6 +10,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
+
 st.title("📍 Village Coverage 2026 Form")
 
 file_path = "Village 2026.xlsx"
@@ -18,6 +19,7 @@ backup_dir = "survey_backups"
 if not os.path.exists(backup_dir):
     os.makedirs(backup_dir)
 
+# --- GOOGLE SHEETS AUTHENTICATION ---
 def get_gspread_client():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
@@ -25,9 +27,15 @@ def get_gspread_client():
     ]
     if "gcp_service_account" in st.secrets:
         creds_dict = dict(st.secrets["gcp_service_account"])
-        # Fix line breaks in private key for Streamlit secrets
+        
+        # Clean & Format Private Key automatically to avoid PEM error
         if "private_key" in creds_dict:
-            creds_dict["private_key"] = creds_dict["private_key"].replace("\\n", "\n")
+            pkey = str(creds_dict["private_key"]).strip()
+            if pkey.startswith('"') and pkey.endswith('"'):
+                pkey = pkey[1:-1]
+            pkey = pkey.replace("\\n", "\n")
+            creds_dict["private_key"] = pkey
+            
         creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
     elif os.path.exists("service_account.json"):
         creds = Credentials.from_service_account_file("service_account.json", scopes=scopes)
@@ -101,7 +109,7 @@ with col2:
     current_time = ist_time.strftime("%H:%M:%S")
     st.text_input("Time", value=current_time, disabled=True, key=f"display_time_{fc}")
 
-# Dropdowns Setup
+# Dropdown Cascading Logic
 rd_options = ["Select..."] + sorted([x for x in df_master['RD NAME'].unique() if x and x != 'nan'])
 selected_rd = st.selectbox("RD Name *", rd_options, key=f"rd_name_{fc}")
 
@@ -197,10 +205,12 @@ else:
             }
             
             try:
+                # 1. Local backup JSON file create karega
                 file_name_json = os.path.join(backup_dir, f"{current_uid}.json")
                 with open(file_name_json, "w", encoding="utf-8") as f:
                     json.dump(new_record, f, ensure_ascii=False, indent=4)
                 
+                # 2. Directly append to Google Sheets
                 success, msg = sync_to_google_sheet(new_record)
                 
                 if success:
@@ -210,3 +220,28 @@ else:
                     st.error(f"❌ Google Sheet Sync Error: {msg}")
             except Exception as ex:
                 st.error(f"❌ Error saving form: {ex}")
+
+# --- ADMIN PANEL ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔒 Admin Download Panel")
+admin_password = st.sidebar.text_input("Enter Password to Download", type="password")
+
+if admin_password == "slmg2026":
+    st.sidebar.success("✅ Access Granted")
+    try:
+        gc = get_gspread_client()
+        sheet = gc.open("Village Coverage 2026").worksheet("Village Coverage 2026")
+        records = sheet.get_all_records()
+        df_live = pd.DataFrame(records)
+        
+        csv_data = df_live.to_csv(index=False).encode('utf-8')
+        st.sidebar.download_button(
+            label="📥 Download Live Google Sheet Data (CSV)",
+            data=csv_data,
+            file_name="Village_Coverage_Survey_2026.csv",
+            mime="text/csv"
+        )
+    except Exception as e:
+        st.sidebar.info("Google Sheet data load nahi ho pa raha.")
+elif admin_password != "":
+    st.sidebar.error("❌ Incorrect Password")

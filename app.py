@@ -7,7 +7,6 @@ import folium
 import os
 import json
 import gspread
-from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="Village Coverage 2026 Form", layout="centered")
 
@@ -19,32 +18,31 @@ backup_dir = "survey_backups"
 if not os.path.exists(backup_dir):
     os.makedirs(backup_dir)
 
+# --- GUARANTEED GOOGLE SHEETS AUTHENTICATION ---
 def get_gspread_client():
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive"
     ]
     
-    if "gcp_service_account" in st.secrets:
-        creds_dict = dict(st.secrets["gcp_service_account"])
+    # Check 1: Streamlit Secrets using raw JSON string parsing
+    if "json_key" in st.secrets:
+        key_dict = json.loads(st.secrets["json_key"])
+        return gspread.service_account_from_dict(key_dict, scopes=scopes)
+    
+    # Check 2: Streamlit Secrets fallback format
+    elif "gcp_service_account" in st.secrets:
+        key_dict = dict(st.secrets["gcp_service_account"])
+        if "private_key" in key_dict:
+            key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+        return gspread.service_account_from_dict(key_dict, scopes=scopes)
         
-        if "private_key" in creds_dict:
-            pkey = str(creds_dict["private_key"]).strip()
-            pkey = pkey.replace("\\n", "\n")
-            if pkey.startswith('"') and pkey.endswith('"'):
-                pkey = pkey[1:-1]
-            if pkey.startswith("'") and pkey.endswith("'"):
-                pkey = pkey[1:-1]
-            creds_dict["private_key"] = pkey
-
-        creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+    # Check 3: Local file check
     elif os.path.exists("service_account.json"):
-        creds = Credentials.from_service_account_file("service_account.json", scopes=scopes)
+        return gspread.service_account(filename="service_account.json", scopes=scopes)
     else:
-        st.error("❌ Service Account Credentials missing!")
+        st.error("❌ Service Account Credentials missing in Streamlit Secrets!")
         st.stop()
-        
-    return gspread.authorize(creds)
 
 def sync_to_google_sheet(record):
     try:
@@ -76,11 +74,8 @@ def sync_to_google_sheet(record):
 def load_data():
     xls = pd.ExcelFile(file_path)
     df_rd = pd.read_excel(xls, sheet_name="RD To Spoke Data")
-    
-    # Strip spacing from column names
     df_rd.columns = df_rd.columns.str.strip()
     
-    # Standardize column mapping to prevent NameError
     col_map = {}
     for col in df_rd.columns:
         c_lower = col.lower().replace(" ", "").replace(".", "")

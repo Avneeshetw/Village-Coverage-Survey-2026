@@ -26,13 +26,11 @@ def get_gspread_client():
     ]
     
     if "gcp_service_account" in st.secrets:
-        # Convert secrets object to standard python dict
         creds_dict = dict(st.secrets["gcp_service_account"])
         
-        # Clean private key string from formatting artifacts
         if "private_key" in creds_dict:
-            pkey = str(creds_dict["private_key"])
-            pkey = pkey.replace("\\n", "\n").strip()
+            pkey = str(creds_dict["private_key"]).strip()
+            pkey = pkey.replace("\\n", "\n")
             if pkey.startswith('"') and pkey.endswith('"'):
                 pkey = pkey[1:-1]
             if pkey.startswith("'") and pkey.endswith("'"):
@@ -43,7 +41,7 @@ def get_gspread_client():
     elif os.path.exists("service_account.json"):
         creds = Credentials.from_service_account_file("service_account.json", scopes=scopes)
     else:
-        st.error("❌ Service Account Credentials nahi mile! Streamlit Secrets check karein.")
+        st.error("❌ Service Account Credentials missing!")
         st.stop()
         
     return gspread.authorize(creds)
@@ -78,9 +76,32 @@ def sync_to_google_sheet(record):
 def load_data():
     xls = pd.ExcelFile(file_path)
     df_rd = pd.read_excel(xls, sheet_name="RD To Spoke Data")
+    
+    # Strip spacing from column names
     df_rd.columns = df_rd.columns.str.strip()
+    
+    # Standardize column mapping to prevent NameError
+    col_map = {}
+    for col in df_rd.columns:
+        c_lower = col.lower().replace(" ", "").replace(".", "")
+        if "rdname" in c_lower:
+            col_map[col] = "RD NAME"
+        elif "sename" in c_lower or "stlname" in c_lower:
+            col_map[col] = "S.E Name"
+        elif "asmname" in c_lower:
+            col_map[col] = "ASM Name"
+        elif "smname" in c_lower:
+            col_map[col] = "SM Name"
+        elif "distributor" in c_lower:
+            col_map[col] = "Distributor Name, Town DRB Code"
+        elif "spoke" in c_lower:
+            col_map[col] = "Spoke Name, Town Spoke Code"
+            
+    df_rd.rename(columns=col_map, inplace=True)
+
     for col in df_rd.select_dtypes(include=['object']).columns:
         df_rd[col] = df_rd[col].astype(str).str.strip()
+        
     return df_rd
 
 try:
@@ -112,33 +133,35 @@ with col2:
     current_time = ist_time.strftime("%H:%M:%S")
     st.text_input("Time", value=current_time, disabled=True, key=f"display_time_{fc}")
 
-# Dropdowns
+# --- Cascading Dropdowns ---
 rd_options = ["Select..."] + sorted([x for x in df_master['RD NAME'].unique() if x and x != 'nan'])
 selected_rd = st.selectbox("RD Name *", rd_options, key=f"rd_name_{fc}")
 
 df_f1 = df_master[df_master['RD NAME'] == selected_rd] if selected_rd != "Select..." else pd.DataFrame(columns=df_master.columns)
 
-se_options = ["Select..."] + sorted([x for x in df_f1['S.E Name'].unique() if x and x != 'nan']) if not df_f1.empty else ["Select..."]
+se_options = ["Select..."] + sorted([x for x in df_f1['S.E Name'].unique() if x and x != 'nan']) if not df_f1.empty and 'S.E Name' in df_f1.columns else ["Select..."]
 selected_se = st.selectbox("STL / S.E Name *", se_options, key=f"se_name_{fc}")
 
 df_f2 = df_f1[df_f1['S.E Name'] == selected_se] if selected_se != "Select..." and not df_f1.empty else pd.DataFrame(columns=df_master.columns)
 
-asm_options = ["Select..."] + sorted([x for x in df_f2['Asm Name'].unique() if x and x != 'nan']) if not df_f2.empty else ["Select..."]
+asm_options = ["Select..."] + sorted([x for x in df_f2['ASM Name'].unique() if x and x != 'nan']) if not df_f2.empty and 'ASM Name' in df_f2.columns else ["Select..."]
 selected_asm = st.selectbox("ASM Name *", asm_options, key=f"asm_name_{fc}")
 
-df_f3 = df_f2[df_f2['Asm Name'] == selected_asm] if selected_asm != "Select..." and not df_f3.empty else pd.DataFrame(columns=df_master.columns)
+df_f3 = df_f2[df_f2['ASM Name'] == selected_asm] if selected_asm != "Select..." and not df_f2.empty else pd.DataFrame(columns=df_master.columns)
 
-sm_options = ["Select..."] + sorted([x for x in df_f3['Sm Name'].unique() if x and x != 'nan']) if not df_f3.empty else ["Select..."]
+sm_options = ["Select..."] + sorted([x for x in df_f3['SM Name'].unique() if x and x != 'nan']) if not df_f3.empty and 'SM Name' in df_f3.columns else ["Select..."]
 selected_sm = st.selectbox("SM Name *", sm_options, key=f"sm_name_{fc}")
 
-df_f4 = df_f3[df_f3['Sm Name'] == selected_sm] if selected_sm != "Select..." and not df_f3.empty else pd.DataFrame(columns=df_master.columns)
+df_f4 = df_f3[df_f3['SM Name'] == selected_sm] if selected_sm != "Select..." and not df_f3.empty else pd.DataFrame(columns=df_master.columns)
 
-dist_options = ["Select..."] + sorted([x for x in df_f4['Distributor Name, Town DRB Code'].dropna().unique() if x and x != 'nan']) if not df_f4.empty else ["Select..."]
+dist_col = 'Distributor Name, Town DRB Code'
+dist_options = ["Select..."] + sorted([x for x in df_f4[dist_col].dropna().unique() if x and x != 'nan']) if not df_f4.empty and dist_col in df_f4.columns else ["Select..."]
 selected_dist = st.selectbox("Distributor Name & Code *", dist_options, key=f"dist_name_{fc}")
 
-df_f5 = df_f4[df_f4['Distributor Name, Town DRB Code'] == selected_dist] if selected_dist != "Select..." and not df_f4.empty else pd.DataFrame(columns=df_master.columns)
+df_f5 = df_f4[df_f4[dist_col] == selected_dist] if selected_dist != "Select..." and not df_f4.empty else pd.DataFrame(columns=df_master.columns)
 
-spoke_options = ["Select..."] + sorted([x for x in df_f5['Spoke Name, Town Spoke Code'].dropna().unique() if x and x != 'nan']) if not df_f5.empty else ["Select..."]
+spoke_col = 'Spoke Name, Town Spoke Code'
+spoke_options = ["Select..."] + sorted([x for x in df_f5[spoke_col].dropna().unique() if x and x != 'nan']) if not df_f5.empty and spoke_col in df_f5.columns else ["Select..."]
 selected_spoke = st.selectbox("Spoke Name & Code *", spoke_options, key=f"spoke_name_{fc}")
 
 entered_village = st.text_input("Village Name * (Type here)", key=f"village_name_{fc}")
@@ -208,12 +231,10 @@ else:
             }
             
             try:
-                # Local JSON Backup
                 file_name_json = os.path.join(backup_dir, f"{current_uid}.json")
                 with open(file_name_json, "w", encoding="utf-8") as f:
                     json.dump(new_record, f, ensure_ascii=False, indent=4)
                 
-                # Append to Google Sheet
                 success, msg = sync_to_google_sheet(new_record)
                 
                 if success:
